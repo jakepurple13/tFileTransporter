@@ -3,8 +3,10 @@ package com.tans.tfiletransporter.ui.filetransport
 import android.annotation.SuppressLint
 import android.media.MediaScannerConnection
 import android.view.View
+import com.tans.tfiletransporter.BuildConfig
 import com.tans.tfiletransporter.R
 import com.tans.tfiletransporter.databinding.ReadingWritingFilesDialogLayoutBinding
+import com.tans.tfiletransporter.file.VcfImporter
 import com.tans.tfiletransporter.logs.AndroidLog
 import com.tans.tfiletransporter.toSizeString
 import com.tans.tfiletransporter.transferproto.fileexplore.model.FileExploreFile
@@ -15,12 +17,15 @@ import com.tans.tfiletransporter.transferproto.filetransfer.SpeedCalculator
 import com.tans.tfiletransporter.utils.getMediaMimeTypeWithFileName
 import com.tans.tuiutils.dialog.BaseSimpleCoroutineResultForceDialogFragment
 import com.tans.tuiutils.view.clicks
+import contacts.core.Contacts
+import contacts.core.log.AndroidLogger
+import contacts.core.log.EmptyLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.launch
 import java.io.File
 import java.net.InetAddress
-import java.util.Optional
+import java.util.*
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.jvm.optionals.getOrNull
 
@@ -39,6 +44,14 @@ class FileDownloaderDialog : BaseSimpleCoroutineResultForceDialogFragment<FileTr
         AtomicReference(null)
     }
 
+    private val vcfImporter = VcfImporter()
+    private val contacts by lazy {
+        Contacts(
+            context = requireContext(),
+            logger = if (BuildConfig.DEBUG) AndroidLogger() else EmptyLogger()
+        )
+    }
+
     override val layoutId: Int = R.layout.reading_writing_files_dialog_layout
 
     constructor() : super(FileTransferDialogState()) {
@@ -52,7 +65,8 @@ class FileDownloaderDialog : BaseSimpleCoroutineResultForceDialogFragment<FileTr
         senderAddress: InetAddress,
         files: List<FileExploreFile>,
         downloadDir: File,
-        maxConnectionSize: Int) : super(FileTransferDialogState()) {
+        maxConnectionSize: Int,
+    ) : super(FileTransferDialogState()) {
         this.senderAddress = senderAddress
         this.files = files
         this.downloadDir = downloadDir
@@ -71,7 +85,14 @@ class FileDownloaderDialog : BaseSimpleCoroutineResultForceDialogFragment<FileTr
                 downloadDir = downloadDir,
                 connectAddress = senderAddress,
                 maxConnectionSize = maxConnectionSize.toLong(),
-                log = AndroidLog
+                log = AndroidLog,
+                contactsImporter = {
+                    println("Starting to import $it")
+                    vcfImporter.importContacts(
+                        contacts = contacts,
+                        path = it
+                    )
+                }
             )
             this@FileDownloaderDialog.downloader.get()?.cancel()
             this@FileDownloaderDialog.downloader.set(downloader)
@@ -113,21 +134,25 @@ class FileDownloaderDialog : BaseSimpleCoroutineResultForceDialogFragment<FileTr
                         FileTransferState.Started -> {
                             speedCalculator.start()
                         }
+
                         FileTransferState.Canceled -> {
                             checkFinishedFileAndInsertToMediaStore()
                             speedCalculator.stop()
                             onResult(FileTransferResult.Cancel)
                         }
+
                         FileTransferState.Finished -> {
                             checkFinishedFileAndInsertToMediaStore()
                             speedCalculator.stop()
                             onResult(FileTransferResult.Finished)
                         }
+
                         is FileTransferState.Error -> {
                             checkFinishedFileAndInsertToMediaStore()
                             speedCalculator.stop()
                             onResult(FileTransferResult.Error(s.msg))
                         }
+
                         is FileTransferState.RemoteError -> {
                             checkFinishedFileAndInsertToMediaStore()
                             speedCalculator.stop()
@@ -181,7 +206,7 @@ class FileDownloaderDialog : BaseSimpleCoroutineResultForceDialogFragment<FileTr
             }
         }
 
-        renderStateNewCoroutine({ it.transferFile to it. process }) {
+        renderStateNewCoroutine({ it.transferFile to it.process }) {
             val file = it.first.getOrNull()
             val process = it.second
             if (file != null) {

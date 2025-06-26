@@ -11,27 +11,10 @@ import com.google.android.material.tabs.TabLayoutMediator
 import com.tans.tfiletransporter.R
 import com.tans.tfiletransporter.Settings
 import com.tans.tfiletransporter.databinding.FileTransportActivityBinding
-import com.tans.tfiletransporter.logs.AndroidLog
-import com.tans.tfiletransporter.transferproto.fileexplore.FileExplore
-import com.tans.tfiletransporter.transferproto.fileexplore.FileExploreObserver
-import com.tans.tfiletransporter.transferproto.fileexplore.FileExploreRequestHandler
-import com.tans.tfiletransporter.transferproto.fileexplore.FileExploreState
-import com.tans.tfiletransporter.transferproto.fileexplore.Handshake
-import com.tans.tfiletransporter.transferproto.fileexplore.bindSuspend
-import com.tans.tfiletransporter.transferproto.fileexplore.connectSuspend
-import com.tans.tfiletransporter.transferproto.fileexplore.handshakeSuspend
-import com.tans.tfiletransporter.transferproto.fileexplore.model.DownloadFilesReq
-import com.tans.tfiletransporter.transferproto.fileexplore.model.DownloadFilesResp
-import com.tans.tfiletransporter.transferproto.fileexplore.model.ScanDirReq
-import com.tans.tfiletransporter.transferproto.fileexplore.model.ScanDirResp
-import com.tans.tfiletransporter.transferproto.fileexplore.model.SendFilesReq
-import com.tans.tfiletransporter.transferproto.fileexplore.model.SendFilesResp
-import com.tans.tfiletransporter.transferproto.fileexplore.model.SendMsgReq
-import com.tans.tfiletransporter.transferproto.fileexplore.waitClose
-import com.tans.tfiletransporter.transferproto.fileexplore.waitHandshake
 import com.tans.tfiletransporter.file.scanChildren
-import com.tans.tfiletransporter.transferproto.fileexplore.model.FileExploreFile
-import com.tans.tfiletransporter.transferproto.fileexplore.requestSendFilesSuspend
+import com.tans.tfiletransporter.logs.AndroidLog
+import com.tans.tfiletransporter.transferproto.fileexplore.*
+import com.tans.tfiletransporter.transferproto.fileexplore.model.*
 import com.tans.tfiletransporter.transferproto.filetransfer.model.SenderFile
 import com.tans.tfiletransporter.ui.commomdialog.NoOptionalDialog
 import com.tans.tfiletransporter.ui.commomdialog.OptionalDialog
@@ -43,23 +26,13 @@ import com.tans.tuiutils.dialog.showSimpleForceCoroutineResultDialogSuspend
 import com.tans.tuiutils.systembar.annotation.SystemBarStyle
 import com.tans.tuiutils.view.clicks
 import com.tans.tuiutils.viewpager2.NoRecycleFragmentStateAdapter
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
-import java.net.InetAddress
 import java.io.File
 import java.lang.ref.WeakReference
-import java.util.ArrayList
+import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.min
 
@@ -129,7 +102,9 @@ class FileTransportActivity : BaseCoroutineStateActivity<FileTransportActivity.C
     /**
      * Remote device notify to send files.
      */
-    private val downloadFilesRequest: FileExploreRequestHandler<DownloadFilesReq, DownloadFilesResp> by lazyViewModelField("downloadFilesRequest") {
+    private val downloadFilesRequest: FileExploreRequestHandler<DownloadFilesReq, DownloadFilesResp> by lazyViewModelField(
+        "downloadFilesRequest"
+    ) {
         object : FileExploreRequestHandler<DownloadFilesReq, DownloadFilesResp> {
             override fun onRequest(isNew: Boolean, request: DownloadFilesReq): DownloadFilesResp {
                 if (isNew) {
@@ -161,12 +136,19 @@ class FileTransportActivity : BaseCoroutineStateActivity<FileTransportActivity.C
             DirTabType.MyAudios to MyAudiosFragment(),
             DirTabType.MyDir to MyDirFragment(),
             DirTabType.RemoteDir to RemoteDirFragment(),
+            DirTabType.Contacts to ContactsFragment(),
             DirTabType.Message to MessageFragment()
         )
     }
 
     override fun CoroutineScope.firstLaunchInitDataCoroutine() {
-        val (remoteAddress, isServer, localAddress) = with(intent) { Triple(getRemoteAddress(), getIsServer(), getLocalAddress()) }
+        val (remoteAddress, isServer, localAddress) = with(intent) {
+            Triple(
+                getRemoteAddress(),
+                getIsServer(),
+                getLocalAddress()
+            )
+        }
 
 
         launch(Dispatchers.IO) {
@@ -188,7 +170,9 @@ class FileTransportActivity : BaseCoroutineStateActivity<FileTransportActivity.C
                     connectResult = runCatching {
                         fileExplore.connectSuspend(remoteAddress)
                     }
-                    if (connectResult.isSuccess) { break }
+                    if (connectResult.isSuccess) {
+                        break
+                    }
                 } while (--connectTimes > 0)
                 connectResult
             }
@@ -215,6 +199,7 @@ class FileTransportActivity : BaseCoroutineStateActivity<FileTransportActivity.C
 
                             fileExplore.addObserver(object : FileExploreObserver {
                                 override fun onNewState(state: FileExploreState) {}
+
                                 // New message coming.
                                 override fun onNewMsg(msg: SendMsgReq) {
                                     updateNewMessage(
@@ -282,6 +267,7 @@ class FileTransportActivity : BaseCoroutineStateActivity<FileTransportActivity.C
             viewBinding.viewPager.offscreenPageLimit = fragments.size
             TabLayoutMediator(viewBinding.tabLayout, viewBinding.viewPager) { tab, position ->
                 tab.text = when (DirTabType.entries[position]) {
+                    DirTabType.Contacts -> "CONTACTS"
                     DirTabType.MyApps -> getString(R.string.file_transport_activity_tab_my_apps)
                     DirTabType.MyImages -> getString(R.string.file_transport_activity_tab_my_images)
                     DirTabType.MyVideos -> getString(R.string.file_transport_activity_tab_my_videos)
@@ -302,6 +288,7 @@ class FileTransportActivity : BaseCoroutineStateActivity<FileTransportActivity.C
                         DirTabType.MyDir.ordinal -> updateState { it.copy(selectedTabType = DirTabType.MyDir) }
                         DirTabType.RemoteDir.ordinal -> updateState { it.copy(selectedTabType = DirTabType.RemoteDir) }
                         DirTabType.Message.ordinal -> updateState { it.copy(selectedTabType = DirTabType.Message) }
+                        DirTabType.Contacts.ordinal -> updateState { it.copy(selectedTabType = DirTabType.Contacts) }
                     }
                 }
 
@@ -321,11 +308,13 @@ class FileTransportActivity : BaseCoroutineStateActivity<FileTransportActivity.C
             // Update Appbar UI
             renderStateNewCoroutine({ it.selectedTabType }) {
                 when (it) {
-                    DirTabType.MyApps, DirTabType.MyImages, DirTabType.MyVideos, DirTabType.MyAudios, DirTabType.MyDir, DirTabType.RemoteDir -> {
+                    DirTabType.MyApps, DirTabType.MyImages, DirTabType.MyVideos, DirTabType.MyAudios, DirTabType.MyDir, DirTabType.RemoteDir, DirTabType.Contacts -> {
                         val lpCollapsing = (viewBinding.collapsingLayout.layoutParams as? AppBarLayout.LayoutParams)
-                        lpCollapsing?.scrollFlags = AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL or AppBarLayout.LayoutParams.SCROLL_FLAG_ENTER_ALWAYS
+                        lpCollapsing?.scrollFlags =
+                            AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL or AppBarLayout.LayoutParams.SCROLL_FLAG_ENTER_ALWAYS
                         viewBinding.collapsingLayout.layoutParams = lpCollapsing
                     }
+
                     DirTabType.Message -> {
                         val lpCollapsing = (viewBinding.collapsingLayout.layoutParams as? AppBarLayout.LayoutParams)
                         lpCollapsing?.scrollFlags = AppBarLayout.LayoutParams.SCROLL_FLAG_NO_SCROLL
@@ -334,14 +323,16 @@ class FileTransportActivity : BaseCoroutineStateActivity<FileTransportActivity.C
                 }
 
                 when (it) {
-                    DirTabType.MyApps, DirTabType.MyImages, DirTabType.MyVideos, DirTabType.MyAudios, DirTabType.MyDir -> {
+                    DirTabType.MyApps, DirTabType.MyImages, DirTabType.MyVideos, DirTabType.MyAudios, DirTabType.MyDir, DirTabType.Contacts -> {
                         viewBinding.floatingActionBt.setImageResource(R.drawable.share_variant_outline)
                         viewBinding.floatingActionBt.visibility = View.VISIBLE
                     }
+
                     DirTabType.RemoteDir -> {
                         viewBinding.floatingActionBt.setImageResource(R.drawable.download_outline)
                         viewBinding.floatingActionBt.visibility = View.VISIBLE
                     }
+
                     DirTabType.Message -> {
                         viewBinding.floatingActionBt.visibility = View.GONE
                     }
@@ -408,7 +399,7 @@ class FileTransportActivity : BaseCoroutineStateActivity<FileTransportActivity.C
 
     suspend fun sendFiles(files: List<FileExploreFile>) {
         val fixedFiles = files.filter { it.size > 0 }
-        val senderFiles = fixedFiles.map { SenderFile( File(it.path), it) }
+        val senderFiles = fixedFiles.map { SenderFile(File(it.path), it) }
         if (senderFiles.isEmpty()) return
         sendSenderFiles(senderFiles)
     }
@@ -494,15 +485,17 @@ class FileTransportActivity : BaseCoroutineStateActivity<FileTransportActivity.C
 
         private fun Intent.getIsServer(): Boolean = getBooleanExtra(IS_SERVER_EXTRA_KEY, false)
 
-        private fun Intent.getRequestShareFiles(): List<String> = getStringArrayListExtra(REQUEST_SHARE_FILES) ?: emptyList()
+        private fun Intent.getRequestShareFiles(): List<String> =
+            getStringArrayListExtra(REQUEST_SHARE_FILES) ?: emptyList()
 
         data class Message(
             val time: Long,
             val msg: String,
-            val fromRemote: Boolean
+            val fromRemote: Boolean,
         )
 
         enum class DirTabType {
+            Contacts,
             MyApps,
             MyImages,
             MyVideos,
@@ -521,17 +514,19 @@ class FileTransportActivity : BaseCoroutineStateActivity<FileTransportActivity.C
         }
 
         data class FileTransportActivityState(
-            val selectedTabType: DirTabType = DirTabType.MyApps,
+            val selectedTabType: DirTabType = DirTabType.Contacts,
             val connectionStatus: ConnectionStatus = ConnectionStatus.Connecting,
-            val messages: List<Message> = emptyList()
+            val messages: List<Message> = emptyList(),
         )
 
-        fun getIntent(context: Context,
-                      localAddress: InetAddress,
-                      remoteAddress: InetAddress,
-                      remoteDeviceInfo: String,
-                      isServer: Boolean,
-                      requestShareFiles: List<String>): Intent {
+        fun getIntent(
+            context: Context,
+            localAddress: InetAddress,
+            remoteAddress: InetAddress,
+            remoteDeviceInfo: String,
+            isServer: Boolean,
+            requestShareFiles: List<String>,
+        ): Intent {
             val i = Intent(context, FileTransportActivity::class.java)
             i.putExtra(LOCAL_ADDRESS_EXTRA_KEY, localAddress)
             i.putExtra(REMOTE_ADDRESS_EXTRA_KEY, remoteAddress)

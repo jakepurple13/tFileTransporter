@@ -5,14 +5,7 @@ import com.tans.tfiletransporter.netty.INettyConnectionTask
 import com.tans.tfiletransporter.netty.NettyConnectionObserver
 import com.tans.tfiletransporter.netty.NettyTaskState
 import com.tans.tfiletransporter.netty.PackageData
-import com.tans.tfiletransporter.netty.extensions.ConnectionServerClientImpl
-import com.tans.tfiletransporter.netty.extensions.ConnectionServerImpl
-import com.tans.tfiletransporter.netty.extensions.IClientManager
-import com.tans.tfiletransporter.netty.extensions.IServer
-import com.tans.tfiletransporter.netty.extensions.requestSimplify
-import com.tans.tfiletransporter.netty.extensions.simplifyServer
-import com.tans.tfiletransporter.netty.extensions.withClient
-import com.tans.tfiletransporter.netty.extensions.withServer
+import com.tans.tfiletransporter.netty.extensions.*
 import com.tans.tfiletransporter.netty.tcp.NettyTcpClientConnectionTask
 import com.tans.tfiletransporter.resumeExceptionIfActive
 import com.tans.tfiletransporter.resumeIfActive
@@ -45,7 +38,8 @@ class FileDownloader(
     val connectAddress: InetAddress,
     val maxConnectionSize: Long,
     val minFrameSize: Long = 1024 * 1024 * 10, // 10MB
-    val log: ILog
+    val log: ILog,
+    private val contactsImporter: suspend (File) -> Unit = {},
 ) : SimpleObservable<FileTransferObserver>, SimpleStateable<FileTransferState> {
 
     override val observers: LinkedBlockingDeque<FileTransferObserver> = LinkedBlockingDeque()
@@ -215,6 +209,7 @@ class FileDownloader(
         fun onActive(lastSingleFileDownloader: SingleFileDownloader?) {
             if (!isSingleFileDownloaderCanceled.get() && !isSingleFileFinished.get() && isSingleFileDownloaderExecuted.compareAndSet(false, true)) {
                 try {
+                    println("Downloading file!")
                     // Create downloading file.
                     val downloadingFile = createDownloadingFile()
                     this.downloadingFile.set(downloadingFile)
@@ -245,6 +240,7 @@ class FileDownloader(
                                 if (result.isSuccess) {
                                     break
                                 }
+
                                 delay(200L)
                             } while (--tryTimes > 0)
                             val fd = result.getOrNull()
@@ -312,7 +308,15 @@ class FileDownloader(
                     recycleResource()
                     // Rename downloaded file's name.
                     downloadingFile.get()?.let {
-                        it.renameTo(getDownloadedFile(file.name))
+                        val f = getDownloadedFile(file.name)
+                        it.renameTo(f)
+                        runBlocking {
+                            println(file)
+                            if (f.name.endsWith(".vcf")) {
+                                println("Starting import")
+                                contactsImporter(f)
+                            }
+                        }
                         downloadingFile.set(null)
                         log.d(TAG, "File: ${file.name} download success!!!")
                     }

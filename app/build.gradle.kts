@@ -133,4 +133,8 @@ dependencies {
 
     implementation(project(":net"))
 
+    implementation("com.googlecode.ez-vcard:ez-vcard:0.12.1")
+    implementation(libs.contacts.core)
+    implementation(libs.contacts.async)
+    implementation(libs.contacts.permissions)
 }
