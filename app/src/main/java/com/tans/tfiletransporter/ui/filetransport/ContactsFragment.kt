@@ -40,7 +40,7 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
         get() = requireActivity().onBackPressedDispatcher
 
     private val onBackPressedCallback: OnBackPressedCallback by lazy {
-        object : OnBackPressedCallback(false) {
+        object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
 
             }
