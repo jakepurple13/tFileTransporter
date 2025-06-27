@@ -9,29 +9,21 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.tans.tfiletransporter.BuildConfig
 import com.tans.tfiletransporter.R
 import com.tans.tfiletransporter.Settings
-import com.tans.tfiletransporter.databinding.RemoteDirFragmentBinding
+import com.tans.tfiletransporter.databinding.ContactsLayoutBinding
 import com.tans.tfiletransporter.file.VcfExporter
 import com.tans.tfiletransporter.logs.AndroidLog
 import com.tans.tfiletransporter.transferproto.fileexplore.FileExplore
 import com.tans.tfiletransporter.transferproto.fileexplore.model.FileExploreFile
 import com.tans.tfiletransporter.transferproto.fileexplore.requestSendFilesSuspend
-import com.tans.tfiletransporter.ui.FileTreeUI
+import com.tans.tfiletransporter.ui.commomdialog.loadingDialogSuspend
 import com.tans.tuiutils.fragment.BaseCoroutineStateFragment
 import contacts.async.findWithContext
 import contacts.core.Contacts
 import contacts.core.log.AndroidLogger
 import contacts.core.log.EmptyLogger
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.io.File
-import java.util.concurrent.LinkedBlockingDeque
 
 class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
 
@@ -42,9 +34,7 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
         )
     }
 
-    override val layoutId: Int = R.layout.remote_dir_fragment
-
-    private var fileTreeUI: FileTreeUI? = null
+    override val layoutId: Int = R.layout.contacts_layout
 
     private val onBackPressedDispatcher: OnBackPressedDispatcher
         get() = requireActivity().onBackPressedDispatcher
@@ -52,9 +42,7 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
     private val onBackPressedCallback: OnBackPressedCallback by lazy {
         object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() {
-                uiCoroutineScope?.launch {
-                    fileTreeUI?.backPress()
-                }
+
             }
         }
     }
@@ -63,30 +51,18 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
         (requireActivity() as FileTransportActivity).fileExplore
     }
 
-    private val fileTreeStateFlow by lazy {
-        MutableStateFlow(FileTreeUI.Companion.FileTreeState())
-    }
-
-    private val fileTreeRecyclerViewScrollChannel: Channel<Int> by lazy {
-        Channel<Int>(1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    }
-
-    private val fileTreeFolderPositionDeque: LinkedBlockingDeque<Int> by lazy {
-        LinkedBlockingDeque()
-    }
-
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-
-    }
+    ) {}
 
     override fun CoroutineScope.firstLaunchInitDataCoroutine() {}
 
     override fun CoroutineScope.bindContentViewCoroutine(contentView: View) {
         onBackPressedDispatcher.addCallback(this@ContactsFragment, onBackPressedCallback)
-        val viewBinding = RemoteDirFragmentBinding.bind(contentView)
+        val viewBinding = ContactsLayoutBinding.bind(contentView)
         val context = requireActivity() as FileTransportActivity
+
+        viewBinding.contactsTextView.text = "Press the share button to share contacts"
 
         permissionLauncher.launch(
             arrayOf(
@@ -95,82 +71,15 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
             )
         )
 
-        viewBinding.fileTreeLayout
-        /*val fileTreeUI = FileTreeUI(
-            context = requireActivity(),
-            viewBinding = viewBinding.fileTreeLayout,
-            rootTreeUpdater = {
-                val handshake = (context.currentState().connectionStatus as? FileTransportActivity.Companion.ConnectionStatus.Connected)?.handshake
-                if (handshake != null) {
-                    val result = runCatching {
-                        fileExplore.requestScanDirSuspend(handshake.remoteFileSeparator)
-                    }.onSuccess {
-                        AndroidLog.d(TAG, "Request scan root dir success")
-                    }.onFailure {
-                        AndroidLog.e(TAG, "Request scan root dir fail: $it", it)
-                    }
-                    if (result.isSuccess) {
-                        createRemoteRootTree(result.getOrNull()!!)
-                    } else {
-                        FileTree(
-                            dirLeafs = emptyList(),
-                            fileLeafs = emptyList(),
-                            path = handshake.remoteFileSeparator,
-                            parentTree = null
-                        )
-                    }
-                } else {
-                    FileTree(
-                        dirLeafs = emptyList(),
-                        fileLeafs = emptyList(),
-                        path = File.separator,
-                        parentTree = null
-                    )
-                }
-            },
-            subTreeUpdater = { parentTree, dir ->
-                val result = runCatching {
-                    fileExplore.requestScanDirSuspend(dir.path)
-                }.onSuccess {
-                    AndroidLog.d(TAG, "Request dir success")
-                }.onFailure {
-                    AndroidLog.e(TAG, "Request dir fail: $it", it)
-                }
-                result.getOrNull()?.let {
-                    parentTree.newRemoteSubTree(it)
-                } ?: parentTree
-            },
-            coroutineScope = this,
-            stateFlow = fileTreeStateFlow,
-            recyclerViewScrollChannel = fileTreeRecyclerViewScrollChannel,
-            folderPositionDeque = fileTreeFolderPositionDeque
-        )
-
-        this@ContactsFragment.fileTreeUI = fileTreeUI
-
-        launch {
-            fileTreeUI.stateFlow()
-                .map { it.fileTree }
-                .distinctUntilChanged()
-                .flowOn(Dispatchers.Main)
-                .collect { tree ->
-                    val tab = context.currentState().selectedTabType
-                    onBackPressedCallback.isEnabled = !tree.isRootFileTree() && tab == FileTransportActivity.Companion.DirTabType.RemoteDir
-                }
-        }*/
-
-        launch {
+        /*launch {
             context.stateFlow()
                 .map { it.selectedTabType }
                 .distinctUntilChanged()
                 .flowOn(Dispatchers.Main)
                 .collect { tab ->
-                    /*val tree = fileTreeUI.currentState().fileTree
-                    onBackPressedCallback.isEnabled =
-                        !tree.isRootFileTree() && tab == FileTransportActivity.Companion.DirTabType.Contacts*/
+                    onBackPressedCallback.isEnabled = tab == FileTransportActivity.Companion.DirTabType.Contacts
                 }
-        }
-
+        }*/
 
         launch {
             context.observeFloatBtnClick()
@@ -182,19 +91,25 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
                             "contacts.vcf"
                         )
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                            if (file.exists()) file.createNewFile()
-                            file.outputStream().use {
-                                VcfExporter().exportContacts(
-                                    context = requireActivity(),
-                                    contactsApi = contactsApi,
-                                    outputStream = it,
-                                    contacts = contactsApi
-                                        .rawContactsQuery()
-                                        .findWithContext()
-                                        .toMutableList(),
-                                    showExportingToast = false,
-                                    callback = {}
-                                )
+                            if (file.exists()) {
+                                file.createNewFile()
+                            } else {
+                                file.writeText("")
+                            }
+                            context.supportFragmentManager.loadingDialogSuspend {
+                                file.outputStream().use {
+                                    VcfExporter().exportContacts(
+                                        context = requireActivity(),
+                                        contactsApi = contactsApi,
+                                        outputStream = it,
+                                        contacts = contactsApi
+                                            .rawContactsQuery()
+                                            .findWithContext()
+                                            .toMutableList(),
+                                        showExportingToast = false,
+                                        callback = {}
+                                    )
+                                }
                             }
                         }
                         val exploreFiles = listOf(file)
@@ -207,7 +122,7 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
                                 )
                             }
                         println(exploreFiles)
-                        if (tab == FileTransportActivity.Companion.DirTabType.Contacts && exploreFiles.isNotEmpty()) {
+                        if (tab == FileTransportActivity.Companion.DirTabType.Contacts) {
                             launch {
                                 runCatching {
                                     fileExplore.requestSendFilesSuspend(
@@ -231,6 +146,6 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
     }
 
     companion object {
-        private const val TAG = "RemoteDirFragment"
+        private const val TAG = "ContactsFragment"
     }
 }
