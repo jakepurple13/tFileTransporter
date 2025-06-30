@@ -58,7 +58,7 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
     override fun CoroutineScope.firstLaunchInitDataCoroutine() {}
 
     override fun CoroutineScope.bindContentViewCoroutine(contentView: View) {
-        onBackPressedDispatcher.addCallback(this@ContactsFragment, onBackPressedCallback)
+        //onBackPressedDispatcher.addCallback(this@ContactsFragment, onBackPressedCallback)
         val viewBinding = ContactsLayoutBinding.bind(contentView)
         val context = requireActivity() as FileTransportActivity
 
@@ -70,16 +70,6 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
                 android.Manifest.permission.WRITE_CONTACTS
             )
         )
-
-        /*launch {
-            context.stateFlow()
-                .map { it.selectedTabType }
-                .distinctUntilChanged()
-                .flowOn(Dispatchers.Main)
-                .collect { tab ->
-                    onBackPressedCallback.isEnabled = tab == FileTransportActivity.Companion.DirTabType.Contacts
-                }
-        }*/
 
         launch {
             context.observeFloatBtnClick()
