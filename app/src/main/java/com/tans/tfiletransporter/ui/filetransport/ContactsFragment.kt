@@ -23,7 +23,9 @@ import contacts.core.Contacts
 import contacts.core.log.AndroidLogger
 import contacts.core.log.EmptyLogger
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
@@ -98,18 +100,20 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
                     file.writeText("")
                 }
                 context.supportFragmentManager.loadingDialogSuspend {
-                    file.outputStream().use {
-                        VcfExporter().exportContacts(
-                            context = requireActivity(),
-                            contactsApi = contactsApi,
-                            outputStream = it,
-                            contacts = contactsApi
-                                .rawContactsQuery()
-                                .findWithContext()
-                                .toMutableList(),
-                            showExportingToast = false,
-                            callback = {}
-                        )
+                    withContext(Dispatchers.IO) {
+                        file.outputStream().use {
+                            VcfExporter().exportContacts(
+                                context = requireActivity(),
+                                contactsApi = contactsApi,
+                                outputStream = it,
+                                contacts = contactsApi
+                                    .rawContactsQuery()
+                                    .findWithContext()
+                                    .toMutableList(),
+                                showExportingToast = false,
+                                callback = {}
+                            )
+                        }
                     }
                 }
             }
@@ -126,10 +130,12 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
             if (tab == FileTransportActivity.Companion.DirTabType.Contacts) {
                 launch {
                     runCatching {
-                        fileExplore.requestSendFilesSuspend(
-                            sendFiles = exploreFiles,
-                            maxConnection = Settings.transferFileMaxConnection()
-                        )
+                        withContext(Dispatchers.IO) {
+                            fileExplore.requestSendFilesSuspend(
+                                sendFiles = exploreFiles,
+                                maxConnection = Settings.transferFileMaxConnection()
+                            )
+                        }
                     }.onSuccess {
                         AndroidLog.d(TAG, "Request send files success: $it")
                         runCatching {
