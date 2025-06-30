@@ -3,11 +3,21 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent">
 
-    <TextView android:layout_width="wrap_content"
+    <TextView android:layout_width="match_parent"
               android:layout_height="wrap_content"
               android:layout_centerInParent="true"
               android:id="@+id/contacts_text_view"
               android:textColor="@color/black"
-              android:text="Press the share button to share contacts"/>
+              android:textAlignment="center"
+              android:text="Transfer contacts to your new device\nby tapping the button"/>
+
+    <Button android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/contacts_text_view"
+            android:layout_marginTop="16dp"
+            android:layout_centerHorizontal="true"
+            style="@style/Widget.AppCompat.Button.Colored"
+            android:id="@+id/share_button"
+            android:text="Transfer Contacts"/>
 
 </RelativeLayout>

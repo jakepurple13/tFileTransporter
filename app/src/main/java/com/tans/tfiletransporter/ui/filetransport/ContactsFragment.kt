@@ -6,6 +6,7 @@ import android.view.View
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
 import com.tans.tfiletransporter.BuildConfig
 import com.tans.tfiletransporter.R
 import com.tans.tfiletransporter.Settings
@@ -62,8 +63,6 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
         val viewBinding = ContactsLayoutBinding.bind(contentView)
         val context = requireActivity() as FileTransportActivity
 
-        viewBinding.contactsTextView.text = "Press the share button to share contacts"
-
         permissionLauncher.launch(
             arrayOf(
                 android.Manifest.permission.READ_CONTACTS,
@@ -71,68 +70,78 @@ class ContactsFragment : BaseCoroutineStateFragment<Unit>(Unit) {
             )
         )
 
+        viewBinding.shareButton.setOnClickListener {
+            lifecycleScope.launch {
+                transferContacts(context)
+            }
+        }
+
         launch {
             context.observeFloatBtnClick()
-                .collect {
-                    val tab = context.currentState().selectedTabType
-                    runCatching {
-                        val file = File(
-                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                            "contacts.vcf"
-                        )
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                            if (file.exists()) {
-                                file.createNewFile()
-                            } else {
-                                file.writeText("")
-                            }
-                            context.supportFragmentManager.loadingDialogSuspend {
-                                file.outputStream().use {
-                                    VcfExporter().exportContacts(
-                                        context = requireActivity(),
-                                        contactsApi = contactsApi,
-                                        outputStream = it,
-                                        contacts = contactsApi
-                                            .rawContactsQuery()
-                                            .findWithContext()
-                                            .toMutableList(),
-                                        showExportingToast = false,
-                                        callback = {}
-                                    )
-                                }
-                            }
-                        }
-                        val exploreFiles = listOf(file)
-                            .map {
-                                FileExploreFile(
-                                    name = it.name,
-                                    path = it.path,
-                                    size = it.length(),
-                                    lastModify = it.lastModified()
-                                )
-                            }
-                        println(exploreFiles)
-                        if (tab == FileTransportActivity.Companion.DirTabType.Contacts) {
-                            launch {
-                                runCatching {
-                                    fileExplore.requestSendFilesSuspend(
-                                        sendFiles = exploreFiles,
-                                        maxConnection = Settings.transferFileMaxConnection()
-                                    )
-                                }.onSuccess {
-                                    AndroidLog.d(TAG, "Request send files success: $it")
-                                    runCatching {
-                                        (requireActivity() as FileTransportActivity).sendFiles(exploreFiles)
-                                    }
-                                }.onFailure {
-                                    AndroidLog.e(TAG, "Request send files fail: $it", it)
-                                }
-                                //fileTreeUI.clearSelectedFiles()
-                            }
-                        }
-                    }.onFailure { it.printStackTrace() }
-                }
+                .collect { transferContacts(context) }
         }
+    }
+
+    private suspend fun CoroutineScope.transferContacts(
+        context: FileTransportActivity,
+    ) {
+        val tab = context.currentState().selectedTabType
+        runCatching {
+            val file = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                "contacts.vcf"
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                if (file.exists()) {
+                    file.createNewFile()
+                } else {
+                    file.writeText("")
+                }
+                context.supportFragmentManager.loadingDialogSuspend {
+                    file.outputStream().use {
+                        VcfExporter().exportContacts(
+                            context = requireActivity(),
+                            contactsApi = contactsApi,
+                            outputStream = it,
+                            contacts = contactsApi
+                                .rawContactsQuery()
+                                .findWithContext()
+                                .toMutableList(),
+                            showExportingToast = false,
+                            callback = {}
+                        )
+                    }
+                }
+            }
+            val exploreFiles = listOf(file)
+                .map {
+                    FileExploreFile(
+                        name = it.name,
+                        path = it.path,
+                        size = it.length(),
+                        lastModify = it.lastModified()
+                    )
+                }
+            println(exploreFiles)
+            if (tab == FileTransportActivity.Companion.DirTabType.Contacts) {
+                launch {
+                    runCatching {
+                        fileExplore.requestSendFilesSuspend(
+                            sendFiles = exploreFiles,
+                            maxConnection = Settings.transferFileMaxConnection()
+                        )
+                    }.onSuccess {
+                        AndroidLog.d(TAG, "Request send files success: $it")
+                        runCatching {
+                            (requireActivity() as FileTransportActivity).sendFiles(exploreFiles)
+                        }
+                    }.onFailure {
+                        AndroidLog.e(TAG, "Request send files fail: $it", it)
+                    }
+                    //fileTreeUI.clearSelectedFiles()
+                }
+            }
+        }.onFailure { it.printStackTrace() }
     }
 
     companion object {
